@@ -120,10 +120,9 @@ struct State{
 	unordered_map<int, int> phi;
 	Check envCheck;
 	Check gCheck;
-    vector<int> costMemo;
 	int score;
-	State(const unordered_map<int, int>& phi, const Check& envCheck, const Check& gCheck, const int score, const vector<int>& costMemo):phi(phi), envCheck(envCheck), gCheck(gCheck), score(score), costMemo(costMemo){}
-	State(const unordered_map<int, int>& phi, const Check& envCheck, const Check& gCheck):phi(phi), envCheck(envCheck), gCheck(gCheck), score(0), costMemo({}){}
+	State(const unordered_map<int, int>& phi, const Check& envCheck, const Check& gCheck, const int score):phi(phi), envCheck(envCheck), gCheck(gCheck), score(score){}
+	State(const unordered_map<int, int>& phi, const Check& envCheck, const Check& gCheck):phi(phi), envCheck(envCheck), gCheck(gCheck), score(0){}
 };
 bool operator < (const State& left, const State& right){
 	return left.score < right.score;
@@ -133,7 +132,6 @@ vector<State> score(const Graph& G, const Graph& envG, const State& state, int s
     const unordered_map<int, int>& phi = state.phi;
 	const Check& envCheck = state.envCheck;
 	const Check& gCheck = state.gCheck;
-    const vector<int>& costMemo = state.costMemo;
     if(phi.size() == G.size()) return {};
     vector<State> res(size, state);
 	unordered_map<int, vector<int>> envNodes;
@@ -144,7 +142,6 @@ vector<State> score(const Graph& G, const Graph& envG, const State& state, int s
 	for (const pair<int, vector<int> > &nodePair : envNodes) { // ↑の処理でやったenv側のノード first:to, second: froms
 		unordered_map<int, double> gScores; // scores[to] = score;
 		//G側でスコアの精算
-		//envCheckedNodeでメモ化可能
 		set<int> gCheckNodes; // g側でcheckしたnode
 		vector<int> notChecked = gCheck.get_not_checks();
 		for (const int &envCheckedNode : nodePair.second) {
@@ -181,9 +178,6 @@ vector<State> score(const Graph& G, const Graph& envG, const State& state, int s
         State& s = res[i];
 		map_graph(s.envCheck, bestNodes[i].second.first, s.phi, s.gCheck, bestNodes[i].second.second);
         s.score = bestNodes[i].first;
-        REP(j,G.size()){
-            s.costMemo[bestNodes[i].second.second] += G.get_cost(bestNodes[i].second.second, j);
-		}
 	}
 	return res;
 }
@@ -197,7 +191,6 @@ int main(void) {
 	int V, E; cin >> V >> E;
 	Graph G(V); //0-indexed node
 	Check gCheck(V);
-	vector<int> costMemo(V);
 	REP(i, E) {
 		int u, v, w; cin >> u >> v >> w;
 		--u; --v;
@@ -225,25 +218,29 @@ int main(void) {
 	int center_node = envG.size() / 2;
 	if (envG.size() % 2 == 0) center_node -= sqrt(envG.size()) / 2;
 	map_graph(envCheck, center_node, phi, gCheck, bestFirst.second);
-    REP(i,G.size()){
-        costMemo[i] = G.get_cost(bestFirst.second, i);
-	}
 
     queue<State> que;
-	que.push(State(phi, envCheck, gCheck, 0, costMemo));
+	que.push(State(phi, envCheck, gCheck, 0));
 
 	vector<State> lasts;
     while(not que.empty()) {
 		State state = que.front(); que.pop();
-        vector<State> next = score(G, envG, state, 1);
-        if(state.phi.size() == G.size()){
-            lasts.push_back(state);
+		if(state.phi.size() == G.size()){
+			lasts.push_back(state);
+            continue;
 		}
-		else {
-			for (auto &a:next) {
-				que.push(a);
+        vector<State> next = score(G, envG, state, 2);
+		vector<int> points(next.size());
+        REP(i,next.size()){
+            vector<State> nexnext = score(G,envG, next[i], 2);
+			int ma = next[i].score;
+            for(auto &a:nexnext){
+                ma = max(ma, a.score);
 			}
+			points[i] = ma;
 		}
+        int index = max_element(points.begin(), points.end()) - points.begin();
+        que.push(next[index]);
 	}
     State res = *max_element(lasts.begin(), lasts.end());
 	for (auto &a : res.phi) {
