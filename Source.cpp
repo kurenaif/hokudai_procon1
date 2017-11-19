@@ -100,6 +100,7 @@ int main(void) {
 	// fast cin
 	cin.tie(0);
 	ios::sync_with_stdio(false);
+    xor128 random;
 	// input
 	int V, E; cin >> V >> E;
 	Graph G(V); //0-indexed node
@@ -163,13 +164,20 @@ int main(void) {
 			envScores[nodePair.first] = best;
 		}
 		//env側で最大値
-		pair<int, pair<int, int>> best = *std::max_element( //first: to, second: score
+		pair<int, pair<int, int>> best = *std::max_element( //first: envTo, second: (first: gTo, score)
 				envScores.begin(), envScores.end(),
 				[](const pair<int, pair<int, int>>& left, const pair<int, pair<int, int>>& right) {
 					return left.second.second < right.second.second;
 				}
 		);
-		map_graph(envCheck, best.first, phi, gCheck, best.second.first);
+        vector<pair<int, int> > bestNodes;
+        for(const auto &a:envScores){
+            if(a.second.second == best.second.second){
+                bestNodes.push_back({a.first, a.second.first});
+			}
+		}
+        pair<int, int> selectedNode = bestNodes[random.random(bestNodes.size())]; //first: envNode, second: gNode
+		map_graph(envCheck, selectedNode.first, phi, gCheck, selectedNode.second);
 	}
 	for (auto &a : phi) {
 		cout << a.second + 1 << " " << a.first + 1 << endl;
