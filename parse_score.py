@@ -10,5 +10,4 @@ for line in f.readlines():
     score += int(line.split(':')[1].split('/')[0])
     i += 1
 
-print(date[:-1])
 print('score:', score)

@@ -18,3 +18,8 @@ do
     echo complete_${i} >> files/score.out
     ./score_evaluator.out files/complete_${i}.in files/complete_${i}.out >> files/score.out
 done
+
+echo commit:`git log --format="%H" -n 1` >> score_log.out
+echo `date` >> score_log.out
+python3 parse_score.py >> score_log.out
+tail score_log.out
