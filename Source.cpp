@@ -97,6 +97,9 @@ void map_graph(Check& envCheck, int envNode, unordered_map<int, int>& phi, Check
 }
 
 int main(void) {
+	// fast cin
+	cin.tie(0);
+	ios::sync_with_stdio(false);
 	// input
 	int V, E; cin >> V >> E;
 	Graph G(V); //0-indexed node
