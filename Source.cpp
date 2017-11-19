@@ -8,6 +8,7 @@
 #include <random>
 #include <set>
 #include <queue>
+#include <map>
 
 
 #define FOR(i,a,b) for (int i=(a);i<(b);i++)
@@ -17,6 +18,8 @@
 
 
 using namespace std;
+
+
 
 class xor128 {
 public:
@@ -109,6 +112,22 @@ public:
 		return res;
 	}
 };
+bool operator < (const Check& left, const Check& right){
+    return left.isChecked < right.isChecked;
+}
+bool operator == (const Check& left, const Check& right){
+	return left.isChecked == right.isChecked;
+}
+bool operator != (const Check& left, const Check& right){
+	return not (left.isChecked == right.isChecked);
+}
+struct CheckHash {
+	typedef std::size_t result_type;
+	std::size_t operator()(const Check& key) const{
+		return std::hash<vector<bool>>()(key.isChecked);
+	};
+};
+
 
 void map_graph(Check& envCheck, int envNode, unordered_map<int, int>& phi, Check& gCheck, int gNode) {
 	phi[envNode] = gNode;
@@ -124,12 +143,27 @@ struct State{
 	State(const unordered_map<int, int>& phi, const Check& envCheck, const Check& gCheck, const int score):phi(phi), envCheck(envCheck), gCheck(gCheck), score(score){}
 	State(const unordered_map<int, int>& phi, const Check& envCheck, const Check& gCheck):phi(phi), envCheck(envCheck), gCheck(gCheck), score(0){}
 };
-bool operator < (const State& left, const State& right){
-	return left.score < right.score;
-}
 
+struct StateHash {
+	typedef std::size_t result_type;
+	std::size_t operator()(const State& key) const{
+		return CheckHash()(key.gCheck) ^ CheckHash()(key.envCheck);
+	};
+};
+bool operator < (const State& left, const State& right){
+    if(left.score != right.score) return left.score < right.score;
+	if(left.envCheck != right.envCheck) return left.envCheck < right.envCheck;
+    return left.gCheck < right.gCheck;
+}
+bool operator == (const State& left, const State& right){
+	return left.gCheck == right.gCheck and left.envCheck == right.envCheck;
+}
+unordered_map<State, vector<State>, StateHash> stateMemo;// state, size: value vector<State>
 vector<State> score(const Graph& G, const Graph& envG, const State& state, int size){
-    const unordered_map<int, int>& phi = state.phi;
+	if(stateMemo.find(state) != stateMemo.end()) {
+		return stateMemo[state];
+	}
+	const unordered_map<int, int>& phi = state.phi;
 	const Check& envCheck = state.envCheck;
 	const Check& gCheck = state.gCheck;
     if(phi.size() == G.size()) return {};
@@ -179,8 +213,20 @@ vector<State> score(const Graph& G, const Graph& envG, const State& state, int s
 		map_graph(s.envCheck, bestNodes[i].second.first, s.phi, s.gCheck, bestNodes[i].second.second);
         s.score = bestNodes[i].first;
 	}
+	stateMemo[state] = res;
 	return res;
 }
+
+int DFS(const Graph& G, const Graph& envG, const State& state, int width, int depth){
+	if(depth == 0 or state.phi.size() == G.size()) return state.score;
+	vector<State> next = score(G, envG, state, width);
+	int ma = state.score;
+	REP(i,next.size()){
+		ma = max(DFS(G, envG, next[i], width, depth-1), ma);
+	}
+	return ma;
+}
+
 
 int main(void) {
 	// fast cin
@@ -232,12 +278,7 @@ int main(void) {
         vector<State> next = score(G, envG, state, 2);
 		vector<int> points(next.size());
         REP(i,next.size()){
-            vector<State> nexnext = score(G,envG, next[i], 2);
-			int ma = next[i].score;
-            for(auto &a:nexnext){
-                ma = max(ma, a.score);
-			}
-			points[i] = ma;
+			points[i] = DFS(G, envG, next[i], 2, 1);
 		}
         int index = max_element(points.begin(), points.end()) - points.begin();
         que.push(next[index]);
