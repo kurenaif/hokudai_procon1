@@ -143,19 +143,22 @@ int main(void) {
 		for (auto &n : envCheck.get_checked_nodes()) for (auto &t : envG.get_to(n)) if (not envCheck.get_is_checked(t)) {
 					envNodes[t].push_back(n);
 				}
-		unordered_map<int, pair<int, int>> envScores; // env側でのnodeの評価値 envScores[envTo] = map(gTo, score);
+		unordered_map<int, pair<int, double>> envScores; // env側でのnodeの評価値 envScores[envTo] = map(gTo, score);
 		for (const pair<int, vector<int> > &nodePair : envNodes) { // ↑の処理でやったenv側のノード first:to, second: froms
-			unordered_map<int, int> gScores; // scores[to] = score;
+			unordered_map<int, double> gScores; // scores[to] = score;
 			//G側でスコアの精算
 			//envCheckedNodeでメモ化可能
 			for (const int &envCheckedNode : nodePair.second) {
 				int from = phi[envCheckedNode];// envG -> G
 				for (int to : gCheck.get_not_checks()) { // unchecked G nodes
 					gScores[to] += G.get_cost(from, to);
+                    for(int toto: gCheck.get_not_checks()){
+                        gScores[to] += double(G.get_cost(to, toto))/10.0;
+					}
 				}
 			}
 			//G側で最大値
-			pair<int, int> best = *std::max_element( //first: to, second: score
+			pair<int, double> best = *std::max_element( //first: to, second: score
 					gScores.begin(), gScores.end(),
 					[](const pair<int, int>& left, const pair<int, int>& right) {
 						return left.second < right.second;
@@ -164,7 +167,7 @@ int main(void) {
 			envScores[nodePair.first] = best;
 		}
 		//env側で最大値
-		pair<int, pair<int, int>> best = *std::max_element( //first: envTo, second: (first: gTo, score)
+		pair<int, pair<int, double>> best = *std::max_element( //first: envTo, second: (first: gTo, score)
 				envScores.begin(), envScores.end(),
 				[](const pair<int, pair<int, int>>& left, const pair<int, pair<int, int>>& right) {
 					return left.second.second < right.second.second;
