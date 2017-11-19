@@ -18,14 +18,14 @@ using namespace std;
 
 class xor128 {
 public:
-	static constexpr unsigned min() { return 0u; }   // —”‚ÌÅ¬’l
-	static constexpr unsigned max() { return UINT_MAX; } // —”‚ÌÅ‘å’l
+	static constexpr unsigned min() { return 0u; }   // ä¹±æ•°ã®æœ€å°å€¤
+	static constexpr unsigned max() { return UINT_MAX; } // ä¹±æ•°ã®æœ€å¤§å€¤
 	unsigned operator()() { return random(); }
 	xor128() {
 		std::random_device rd;
 		w = rd();
 	}
-	xor128(unsigned s) { w = s; }  // —^‚¦‚ç‚ê‚½ƒV[ƒh‚Å‰Šú‰»
+	xor128(unsigned s) { w = s; }  // ä¸ãˆã‚‰ã‚ŒãŸã‚·ãƒ¼ãƒ‰ã§åˆæœŸåŒ–
 	unsigned random() {
 		unsigned t;
 		t = x ^ (x << 11);
@@ -117,7 +117,7 @@ int main(void) {
 
 	unordered_map<int, int> phi;
 	// first node
-	pair<int, int> bestFirst; // first:score, second:node 
+	pair<int, int> bestFirst; // first:score, second:node
 	REP(from, G.size()) {
 		int score = 0;
 		for (auto &to : G.get_to(from)) {
@@ -137,34 +137,34 @@ int main(void) {
 	REP(i, G.size() - 1) {
 		unordered_map<int, vector<int>> envNodes;
 		for (auto &n : envCheck.get_checked_nodes()) for (auto &t : envG.get_to(n)) if (not envCheck.get_is_checked(t)) {
-			envNodes[t].push_back(n);
-		}
-		unordered_map<int, pair<int, int>> envScores; // env‘¤‚Å‚Ìnode‚Ì•]‰¿’l envScores[envTo] = map(gTo, score);
-		for (const pair<int, vector<int> > &nodePair : envNodes) { // ª‚Ìˆ—‚Å‚â‚Á‚½env‘¤‚Ìƒm[ƒh first:to, second: froms
+					envNodes[t].push_back(n);
+				}
+		unordered_map<int, pair<int, int>> envScores; // envå´ã§ã®nodeã®è©•ä¾¡å€¤ envScores[envTo] = map(gTo, score);
+		for (const pair<int, vector<int> > &nodePair : envNodes) { // â†‘ã®å‡¦ç†ã§ã‚„ã£ãŸenvå´ã®ãƒãƒ¼ãƒ‰ first:to, second: froms
 			unordered_map<int, int> gScores; // scores[to] = score;
-			//G‘¤‚ÅƒXƒRƒA‚Ì¸Z
-			//envCheckedNode‚Åƒƒ‚‰»‰Â”\
+			//Gå´ã§ã‚¹ã‚³ã‚¢ã®ç²¾ç®—
+			//envCheckedNodeã§ãƒ¡ãƒ¢åŒ–å¯èƒ½
 			for (const int &envCheckedNode : nodePair.second) {
 				int from = phi[envCheckedNode];// envG -> G
 				for (int to : gCheck.get_not_checks()) { // unchecked G nodes
 					gScores[to] += G.get_cost(from, to);
 				}
 			}
-			//G‘¤‚ÅÅ‘å’l
+			//Gå´ã§æœ€å¤§å€¤
 			pair<int, int> best = *std::max_element( //first: to, second: score
-				gScores.begin(), gScores.end(),
-				[](const pair<int, int>& left, const pair<int, int>& right) {
-				return left.second < right.second;
-			}
+					gScores.begin(), gScores.end(),
+					[](const pair<int, int>& left, const pair<int, int>& right) {
+						return left.second < right.second;
+					}
 			);
 			envScores[nodePair.first] = best;
 		}
-		//env‘¤‚ÅÅ‘å’l
+		//envå´ã§æœ€å¤§å€¤
 		pair<int, pair<int, int>> best = *std::max_element( //first: to, second: score
-			envScores.begin(), envScores.end(),
-			[](const pair<int, pair<int, int>>& left, const pair<int, pair<int, int>>& right) {
-			return left.second.second < right.second.second;
-		}
+				envScores.begin(), envScores.end(),
+				[](const pair<int, pair<int, int>>& left, const pair<int, pair<int, int>>& right) {
+					return left.second.second < right.second.second;
+				}
 		);
 		map_graph(envCheck, best.first, phi, gCheck, best.second.first);
 	}
