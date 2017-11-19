@@ -7,6 +7,7 @@
 #include <climits>
 #include <random>
 #include <set>
+#include <queue>
 
 
 #define FOR(i,a,b) for (int i=(a);i<(b);i++)
@@ -53,13 +54,14 @@ public:
 		if (cost == 0) return;
 		G[from].push_back(to);
 		G[to].push_back(from);
-		edgeSum[from] += cost;
-		edgeSum[to] += cost;
+		edgeSum[from] = -1;
+		edgeSum[to] = -1;
 		mat[from][to] = cost;
 		mat[to][from] = cost;
 	}
 	void change_edge(const int from, const int to, int cost) {
 		if (mat[from][to] != 0) G[from].push_back(to);
+		if (mat[to][from] != 0) G[from].push_back(from);
 		mat[from][to] = cost;
 		mat[to][from] = cost;
 	}
@@ -67,12 +69,23 @@ public:
 		return G[node];
 	}
 	const long get_edge_sum(const int node){
+		if(edgeSum[node] == -1){
+			edgeSum[node] = 0;
+			priority_queue<int> q;
+			for(auto &a:mat[node]){
+				q.push(a);
+			}
+			for(int i=0;i<10 and not q.empty();++i){
+				int val = q.top(); q.pop();
+				edgeSum[node] += val;
+			}
+		}
 		return edgeSum[node];
 	}
-	int size() {
+	int size() const {
 		return G.size();
 	}
-	const int get_cost(int from, int to) {
+	const int get_cost(int from, int to) const {
 		return mat[from][to];
 	}
 };
@@ -88,9 +101,9 @@ public:
 		checkArray.push_back(node);
 		isChecked[node] = true;
 	}
-	bool get_is_checked(int node) { return isChecked[node]; }
+	bool get_is_checked(int node) const { return isChecked[node]; }
 	const vector<int>& get_checked_nodes() const { return checkArray; }
-	vector<int> get_not_checks() {
+	vector<int> get_not_checks() const {
 		vector<int> res;
 		REP(i, isChecked.size()) if (not isChecked[i]) { res.push_back(i); }
 		return res;
@@ -103,15 +116,88 @@ void map_graph(Check& envCheck, int envNode, unordered_map<int, int>& phi, Check
 	gCheck.check(gNode);
 }
 
+struct State{
+	unordered_map<int, int> phi;
+	Check envCheck;
+	Check gCheck;
+    vector<int> costMemo;
+	int score;
+	State(const unordered_map<int, int>& phi, const Check& envCheck, const Check& gCheck, const int score, const vector<int>& costMemo):phi(phi), envCheck(envCheck), gCheck(gCheck), score(score), costMemo(costMemo){}
+	State(const unordered_map<int, int>& phi, const Check& envCheck, const Check& gCheck):phi(phi), envCheck(envCheck), gCheck(gCheck), score(0), costMemo({}){}
+};
+bool operator < (const State& left, const State& right){
+	return left.score < right.score;
+}
+
+vector<State> score(const Graph& G, const Graph& envG, const State& state, int size){
+    const unordered_map<int, int>& phi = state.phi;
+	const Check& envCheck = state.envCheck;
+	const Check& gCheck = state.gCheck;
+    const vector<int>& costMemo = state.costMemo;
+    if(phi.size() == G.size()) return {};
+    vector<State> res(size, state);
+	unordered_map<int, vector<int>> envNodes;
+	for (auto &n : envCheck.get_checked_nodes()) for (auto &t : envG.get_to(n)) if (not envCheck.get_is_checked(t)) {
+				envNodes[t].push_back(n);
+			}
+	unordered_map<int, pair<int, double>> envScores; // env側でのnodeの評価値 envScores[envTo] = map(gTo, score);
+	for (const pair<int, vector<int> > &nodePair : envNodes) { // ↑の処理でやったenv側のノード first:to, second: froms
+		unordered_map<int, double> gScores; // scores[to] = score;
+		//G側でスコアの精算
+		//envCheckedNodeでメモ化可能
+		set<int> gCheckNodes; // g側でcheckしたnode
+		vector<int> notChecked = gCheck.get_not_checks();
+		for (const int &envCheckedNode : nodePair.second) {
+			int from = phi.at(envCheckedNode);// envG -> G
+			for (int to : notChecked) { // unchecked G nodes
+				gScores[to] += G.get_cost(from, to);
+				gCheckNodes.insert(to);
+			}
+		}
+		//G側で最大値
+		pair<int, double> best = *std::max_element( //first: to, second: score
+				gScores.begin(), gScores.end(),
+				[](const pair<int, int>& left, const pair<int, int>& right) {
+					return left.second < right.second;
+				}
+		);
+		envScores[nodePair.first] = best;
+	}
+	//env側で最大値
+	pair<int, pair<int, double>> best = *std::max_element( //first: envTo, second: (first: gTo, score)
+			envScores.begin(), envScores.end(),
+			[](const pair<int, pair<int, int>>& left, const pair<int, pair<int, int>>& right) {
+				return left.second.second < right.second.second;
+			}
+	);
+	vector<pair<double, pair<int, int> > > bestNodes;
+	for(const auto &a:envScores){
+		bestNodes.push_back({a.second.second, {a.first, a.second.first}});
+	}
+	sort(bestNodes.begin(), bestNodes.end());
+	reverse(bestNodes.begin(), bestNodes.end());
+	//map graph
+    REP(i,res.size()){
+        State& s = res[i];
+		map_graph(s.envCheck, bestNodes[i].second.first, s.phi, s.gCheck, bestNodes[i].second.second);
+        s.score = bestNodes[i].first;
+        REP(j,G.size()){
+            s.costMemo[bestNodes[i].second.second] += G.get_cost(bestNodes[i].second.second, j);
+		}
+	}
+	return res;
+}
+
 int main(void) {
 	// fast cin
 	cin.tie(0);
 	ios::sync_with_stdio(false);
-    xor128 random;
+	xor128 random;
 	// input
 	int V, E; cin >> V >> E;
 	Graph G(V); //0-indexed node
 	Check gCheck(V);
+	vector<int> costMemo(V);
 	REP(i, E) {
 		int u, v, w; cin >> u >> v >> w;
 		--u; --v;
@@ -130,10 +216,7 @@ int main(void) {
 	// first node
 	pair<int, int> bestFirst; // first:score, second:node
 	REP(from, G.size()) {
-		int score = 0;
-		for (auto &to : G.get_to(from)) {
-			score += G.get_cost(from, to);
-		}
+		int score = G.get_edge_sum(from);
 		if (bestFirst.first < score) {
 			bestFirst.first = score;
 			bestFirst.second = from;
@@ -141,57 +224,29 @@ int main(void) {
 	}
 	int center_node = envG.size() / 2;
 	if (envG.size() % 2 == 0) center_node -= sqrt(envG.size()) / 2;
-	phi[center_node] = bestFirst.second;
 	map_graph(envCheck, center_node, phi, gCheck, bestFirst.second);
-
-
-	REP(i, G.size() - 1) {
-		unordered_map<int, vector<int>> envNodes;
-		for (auto &n : envCheck.get_checked_nodes()) for (auto &t : envG.get_to(n)) if (not envCheck.get_is_checked(t)) {
-					envNodes[t].push_back(n);
-				}
-		unordered_map<int, pair<int, double>> envScores; // env側でのnodeの評価値 envScores[envTo] = map(gTo, score);
-		for (const pair<int, vector<int> > &nodePair : envNodes) { // ↑の処理でやったenv側のノード first:to, second: froms
-			unordered_map<int, double> gScores; // scores[to] = score;
-			//G側でスコアの精算
-			//envCheckedNodeでメモ化可能
-            set<int> gCheckNodes; // g側でcheckしたnode
-			for (const int &envCheckedNode : nodePair.second) {
-				int from = phi[envCheckedNode];// envG -> G
-				for (int to : gCheck.get_not_checks()) { // unchecked G nodes
-					gScores[to] += G.get_cost(from, to);
-					gCheckNodes.insert(to);
-				}
-			}
-            for(const int& node: gCheckNodes){
-                gScores[node] += double(G.get_edge_sum(node) - gScores[node])/1000.0;
-			}
-			//G側で最大値
-			pair<int, double> best = *std::max_element( //first: to, second: score
-					gScores.begin(), gScores.end(),
-					[](const pair<int, int>& left, const pair<int, int>& right) {
-						return left.second < right.second;
-					}
-			);
-			envScores[nodePair.first] = best;
-		}
-		//env側で最大値
-		pair<int, pair<int, double>> best = *std::max_element( //first: envTo, second: (first: gTo, score)
-				envScores.begin(), envScores.end(),
-				[](const pair<int, pair<int, int>>& left, const pair<int, pair<int, int>>& right) {
-					return left.second.second < right.second.second;
-				}
-		);
-        vector<pair<int, int> > bestNodes;
-        for(const auto &a:envScores){
-            if(a.second.second == best.second.second){
-                bestNodes.push_back({a.first, a.second.first});
-			}
-		}
-        pair<int, int> selectedNode = bestNodes[random.random(bestNodes.size())]; //first: envNode, second: gNode
-		map_graph(envCheck, selectedNode.first, phi, gCheck, selectedNode.second);
+    REP(i,G.size()){
+        costMemo[i] = G.get_cost(bestFirst.second, i);
 	}
-	for (auto &a : phi) {
+
+    queue<State> que;
+	que.push(State(phi, envCheck, gCheck, 0, costMemo));
+
+	vector<State> lasts;
+    while(not que.empty()) {
+		State state = que.front(); que.pop();
+        vector<State> next = score(G, envG, state, 1);
+        if(state.phi.size() == G.size()){
+            lasts.push_back(state);
+		}
+		else {
+			for (auto &a:next) {
+				que.push(a);
+			}
+		}
+	}
+    State res = *max_element(lasts.begin(), lasts.end());
+	for (auto &a : res.phi) {
 		cout << a.second + 1 << " " << a.first + 1 << endl;
 	}
 }
