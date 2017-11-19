@@ -164,7 +164,7 @@ int main(void) {
 				}
 			}
             for(const int& node: gCheckNodes){
-                gScores[node] += double(G.get_edge_sum(node) - gScores[node])/10.0;
+                gScores[node] += double(G.get_edge_sum(node) - gScores[node])/1000.0;
 			}
 			//G側で最大値
 			pair<int, double> best = *std::max_element( //first: to, second: score
