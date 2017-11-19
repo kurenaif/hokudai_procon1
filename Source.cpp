@@ -9,6 +9,7 @@
 #include <set>
 #include <queue>
 #include <map>
+#include <unordered_set>
 
 
 #define FOR(i,a,b) for (int i=(a);i<(b);i++)
@@ -52,13 +53,17 @@ public:
 	vector<vector<int> > G;
 	vector<vector<int> > mat;
 	vector<long long> edgeSum;
-	Graph(const int nodeNum) :G(nodeNum), mat(nodeNum, vector<int>(nodeNum, 0)), edgeSum(nodeNum) {}
+	Graph(const int nodeNum) :G(nodeNum), mat(nodeNum, vector<int>(nodeNum, 0)), edgeSum(nodeNum) {
+		REP(i,nodeNum){
+            G[i].reserve(nodeNum);
+		}
+	}
 	void add_edge(const int from, const int to, int cost) {
 		if (cost == 0) return;
 		G[from].push_back(to);
 		G[to].push_back(from);
-		edgeSum[from] = -1;
-		edgeSum[to] = -1;
+		edgeSum[from] += cost;
+		edgeSum[to] += cost;
 		mat[from][to] = cost;
 		mat[to][from] = cost;
 	}
@@ -71,19 +76,17 @@ public:
 	const vector<int> & get_to(const int node) const {
 		return G[node];
 	}
-	const long get_edge_sum(const int node){
-		if(edgeSum[node] == -1){
-			edgeSum[node] = 0;
-			priority_queue<int> q;
-			for(auto &a:mat[node]){
-				q.push(a);
-			}
-			for(int i=0;i<10 and not q.empty();++i){
-				int val = q.top(); q.pop();
-				edgeSum[node] += val;
-			}
+	const long get_edge_sum(const int& node) const {return edgeSum[node];}
+	const long get_edge_sum(const int& node, const int& cnt) const {
+		priority_queue<int> q;
+		for(auto &a:mat[node]){
+            if(a != 0) q.push(a);
 		}
-		return edgeSum[node];
+        long res = 0;
+		for(int i=0;i<cnt and not q.empty();++i) {
+			res += q.top(); q.pop();
+		}
+		return res;
 	}
 	int size() const {
 		return G.size();
@@ -109,7 +112,7 @@ public:
 	vector<int> get_not_checks() const {
 		vector<int> res;
 		REP(i, isChecked.size()) if (not isChecked[i]) { res.push_back(i); }
-		return res;
+		return std::move(res);
 	}
 };
 bool operator < (const Check& left, const Check& right){
@@ -158,6 +161,16 @@ bool operator < (const State& left, const State& right){
 bool operator == (const State& left, const State& right){
 	return left.gCheck == right.gCheck and left.envCheck == right.envCheck;
 }
+
+struct pairhash {
+public:
+	template <typename T, typename U>
+	std::size_t operator()(const std::pair<T, U> &x) const
+	{
+		return std::hash<T>()(x.first) ^ std::hash<U>()(x.second);
+	}
+};
+
 unordered_map<State, vector<State>, StateHash> stateMemo;// state, size: value vector<State>
 vector<State> score(const Graph& G, const Graph& envG, const State& state, int size){
 	if(stateMemo.find(state) != stateMemo.end()) {
@@ -172,49 +185,44 @@ vector<State> score(const Graph& G, const Graph& envG, const State& state, int s
 	for (auto &n : envCheck.get_checked_nodes()) for (auto &t : envG.get_to(n)) if (not envCheck.get_is_checked(t)) {
 				envNodes[t].push_back(n);
 			}
-	unordered_map<int, pair<int, double>> envScores; // env側でのnodeの評価値 envScores[envTo] = map(gTo, score);
+	unordered_map<pair<int, int>, double, pairhash> envScores; // env側でのnodeの評価値 envScores[envTo] = map(gTo, score);
 	for (const pair<int, vector<int> > &nodePair : envNodes) { // ↑の処理でやったenv側のノード first:to, second: froms
 		unordered_map<int, double> gScores; // scores[to] = score;
 		//G側でスコアの精算
-		set<int> gCheckNodes; // g側でcheckしたnode
 		vector<int> notChecked = gCheck.get_not_checks();
 		for (const int &envCheckedNode : nodePair.second) {
 			int from = phi.at(envCheckedNode);// envG -> G
 			for (int to : notChecked) { // unchecked G nodes
 				gScores[to] += G.get_cost(from, to);
-				gCheckNodes.insert(to);
 			}
 		}
 		//G側で最大値
-		pair<int, double> best = *std::max_element( //first: to, second: score
-				gScores.begin(), gScores.end(),
-				[](const pair<int, int>& left, const pair<int, int>& right) {
-					return left.second < right.second;
-				}
-		);
-		envScores[nodePair.first] = best;
+        vector<pair<double, int> > scores; //first:value, second: to
+        scores.reserve(gScores.size());
+		for(const pair<int ,double>& to: gScores){
+			scores.push_back({to.second, to.first});
+		}
+		if(res.size() < scores.size()) nth_element(scores.begin(), scores.begin()+res.size(), scores.end());
+		//sort(scores.begin(), scores.end());
+        REP(i,min(res.size(), scores.size())){
+            envScores[{nodePair.first, scores[i].second}] = scores[i].first;
+		}
 	}
 	//env側で最大値
-	pair<int, pair<int, double>> best = *std::max_element( //first: envTo, second: (first: gTo, score)
-			envScores.begin(), envScores.end(),
-			[](const pair<int, pair<int, int>>& left, const pair<int, pair<int, int>>& right) {
-				return left.second.second < right.second.second;
-			}
-	);
 	vector<pair<double, pair<int, int> > > bestNodes;
-	for(const auto &a:envScores){
-		bestNodes.push_back({a.second.second, {a.first, a.second.first}});
+	for(const pair<pair<int, int>, double> &a:envScores){
+		bestNodes.push_back({a.second, {a.first.first, a.first.second}});
 	}
 	sort(bestNodes.begin(), bestNodes.end());
 	reverse(bestNodes.begin(), bestNodes.end());
 	//map graph
-    REP(i,res.size()){
+    REP(i,min(res.size(), bestNodes.size())){
         State& s = res[i];
 		map_graph(s.envCheck, bestNodes[i].second.first, s.phi, s.gCheck, bestNodes[i].second.second);
         s.score = bestNodes[i].first;
 	}
 	stateMemo[state] = res;
-	return res;
+	return std::move(res);
 }
 
 int DFS(const Graph& G, const Graph& envG, const State& state, int width, int depth){
@@ -248,7 +256,7 @@ int main(void) {
 	REP(i, E) {
 		int u, v; cin >> u >> v;
 		--u; --v;
-		envG.add_edge(u, v, -1);
+		envG.add_edge(u, v, 1);
 	}
 
 	unordered_map<int, int> phi;
@@ -266,7 +274,7 @@ int main(void) {
 	map_graph(envCheck, center_node, phi, gCheck, bestFirst.second);
 
     queue<State> que;
-	que.push(State(phi, envCheck, gCheck, 0));
+	que.push(State(phi, envCheck, gCheck, 10));
 
 	vector<State> lasts;
     while(not que.empty()) {
@@ -278,13 +286,13 @@ int main(void) {
         vector<State> next = score(G, envG, state, 2);
 		vector<int> points(next.size());
         REP(i,next.size()){
-			points[i] = DFS(G, envG, next[i], 2, 1);
+			points[i] = DFS(G, envG, next[i], 2, 2);
 		}
         int index = max_element(points.begin(), points.end()) - points.begin();
         que.push(next[index]);
 	}
     State res = *max_element(lasts.begin(), lasts.end());
 	for (auto &a : res.phi) {
-		cout << a.second + 1 << " " << a.first + 1 << endl;
+		cout << a.second + 1 << " " << a.first + 1 << "\n";
 	}
 }
