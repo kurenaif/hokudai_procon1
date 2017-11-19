@@ -6,6 +6,7 @@
 #include <cmath>
 #include <climits>
 #include <random>
+#include <set>
 
 
 #define FOR(i,a,b) for (int i=(a);i<(b);i++)
@@ -46,11 +47,14 @@ class Graph {
 public:
 	vector<vector<int> > G;
 	vector<vector<int> > mat;
-	Graph(const int nodeNum) :G(nodeNum), mat(nodeNum, vector<int>(nodeNum, 0)) {}
+	vector<long long> edgeSum;
+	Graph(const int nodeNum) :G(nodeNum), mat(nodeNum, vector<int>(nodeNum, 0)), edgeSum(nodeNum) {}
 	void add_edge(const int from, const int to, int cost) {
 		if (cost == 0) return;
 		G[from].push_back(to);
 		G[to].push_back(from);
+		edgeSum[from] += cost;
+		edgeSum[to] += cost;
 		mat[from][to] = cost;
 		mat[to][from] = cost;
 	}
@@ -61,6 +65,9 @@ public:
 	}
 	const vector<int> & get_to(const int node) const {
 		return G[node];
+	}
+	const long get_edge_sum(const int node){
+		return edgeSum[node];
 	}
 	int size() {
 		return G.size();
@@ -148,14 +155,16 @@ int main(void) {
 			unordered_map<int, double> gScores; // scores[to] = score;
 			//G側でスコアの精算
 			//envCheckedNodeでメモ化可能
+            set<int> gCheckNodes; // g側でcheckしたnode
 			for (const int &envCheckedNode : nodePair.second) {
 				int from = phi[envCheckedNode];// envG -> G
 				for (int to : gCheck.get_not_checks()) { // unchecked G nodes
 					gScores[to] += G.get_cost(from, to);
-                    for(int toto: gCheck.get_not_checks()){
-                        gScores[to] += double(G.get_cost(to, toto))/10.0;
-					}
+					gCheckNodes.insert(to);
 				}
+			}
+            for(const int& node: gCheckNodes){
+                gScores[node] += double(G.get_edge_sum(node) - gScores[node])/10.0;
 			}
 			//G側で最大値
 			pair<int, double> best = *std::max_element( //first: to, second: score
