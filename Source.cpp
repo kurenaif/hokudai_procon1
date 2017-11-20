@@ -272,7 +272,7 @@ int main(void) {
 					qState[t+1].push(nextState);
 				}
 			}
-			if(not TimeCheck(start, 9500)) break;
+			if(not TimeCheck(start, 9000)) break;
 		}
 	}
 	State res = qState.back().top();
