@@ -252,6 +252,9 @@ int main(void) {
 		int score = G.get_edge_sum(from);
 		if (bestFirst.first < score) {
 			bestFirst.first = score;
+		end = std::chrono::system_clock::now();  // 計測終了時間
+		double elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count(); //処理に要した時間をミリ秒に変換
+		if(elapsed > limit) break;
 			bestFirst.second = from;
 		}
 	}
@@ -278,6 +281,7 @@ int main(void) {
         que.push(next[index]);
 	}
 	State res = *max_element(lasts.begin(), lasts.end());
+	phi = std::move(res.phi);
 
 	priority_queue<pair<int, int> > nodePotential; // first: score, second: envNode
 	vector<int> scoreMemo(envG.size()); // scoreMemo[to] = score;
@@ -377,7 +381,7 @@ int main(void) {
 	}
 	
 
-	for (auto &a : res.phi) {
+	for (auto &a : phi) {
 		cout << a.second + 1 << " " << a.first + 1 << endl;
 	}
 }
