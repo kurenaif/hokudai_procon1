@@ -1,4 +1,4 @@
-#!/bin/sh -eux
+#!/bin/bash -eux
 
 make
 
@@ -14,7 +14,7 @@ done
 for i in `seq -w 1 20`
 do
     ./graph_generator.out files/complete_${i}.in 1 $i
-    ./hokudai_procon1 < files/complete_${i}.in > files/complete_${i}.out
+    time ./hokudai_procon1 < files/complete_${i}.in > files/complete_${i}.out
     echo complete_${i} >> files/score.out
     ./score_evaluator.out files/complete_${i}.in files/complete_${i}.out >> files/score.out
 done

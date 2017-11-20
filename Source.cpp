@@ -20,8 +20,16 @@
 
 using namespace std;
 
-constexpr double limit = 9500;
+constexpr double limit = 9800;
 
+struct pairhash {
+public:
+  template <typename T, typename U>
+  std::size_t operator()(const std::pair<T, U> &x) const
+  {
+    return std::hash<T>()(x.first) ^ std::hash<U>()(x.second);
+  }
+};
 
 class xor128 {
 public:
@@ -121,6 +129,7 @@ struct CheckHash {
 };
 
 
+
 void map_graph(Check& envCheck, int envNode, unordered_map<int, int>& phi, Check& gCheck, int gNode) {
 	phi[envNode] = gNode;
 	envCheck.check(envNode);
@@ -150,23 +159,19 @@ bool operator < (const State& left, const State& right){
 bool operator == (const State& left, const State& right){
 	return left.gCheck == right.gCheck and left.envCheck == right.envCheck;
 }
-unordered_map<State, vector<State>, StateHash> stateMemo;// state, size: value vector<State>
 vector<State> score(const Graph& G, const Graph& envG, const State& state, int size){
-	if(stateMemo.find(state) != stateMemo.end()) {
-		return stateMemo[state];
-	}
 	const unordered_map<int, int>& phi = state.phi;
 	const Check& envCheck = state.envCheck;
 	const Check& gCheck = state.gCheck;
     if(phi.size() == G.size()) return {};
-    vector<State> res(size, state);
+    vector<State> res;
 	unordered_map<int, vector<int>> envNodes;
 	for (auto &n : envCheck.get_checked_nodes()) for (auto &t : envG.get_to(n)) if (not envCheck.get_is_checked(t)) {
 				envNodes[t].push_back(n);
 			}
-	unordered_map<int, pair<int, double>> envScores; // env側でのnodeの評価値 envScores[envTo] = map(gTo, score);
+	unordered_map<pair<int, int> , int, pairhash> envScores; // first.first: envG first.second: G, second: score
 	for (const pair<int, vector<int> > &nodePair : envNodes) { // ↑の処理でやったenv側のノード first:to, second: froms
-		unordered_map<int, double> gScores; // scores[to] = score;
+		unordered_map<int, int> gScores; // scores[to] = score;
 		//G側でスコアの精算
 		set<int> gCheckNodes; // g側でcheckしたnode
 		vector<int> notChecked = gCheck.get_not_checks();
@@ -183,42 +188,35 @@ vector<State> score(const Graph& G, const Graph& envG, const State& state, int s
 				[](const pair<int, int>& left, const pair<int, int>& right) {
 					return left.second < right.second;
 				}
-		);
-		envScores[nodePair.first] = best;
+			);
+		for(const pair<int, int> &p: gScores){
+			envScores[{nodePair.first, p.first}] = p.second;
+		}
 	}
 	//env側で最大値
-	pair<int, pair<int, double>> best = *std::max_element( //first: envTo, second: (first: gTo, score)
-			envScores.begin(), envScores.end(),
-			[](const pair<int, pair<int, int>>& left, const pair<int, pair<int, int>>& right) {
-				return left.second.second < right.second.second;
-			}
-	);
 	vector<pair<double, pair<int, int> > > bestNodes;
 	for(const auto &a:envScores){
-		bestNodes.push_back({a.second.second, {a.first, a.second.first}});
+		bestNodes.push_back({a.second, {a.first.first, a.first.second}});
 	}
 	sort(bestNodes.begin(), bestNodes.end());
 	reverse(bestNodes.begin(), bestNodes.end());
 	//map graph
-    REP(i,res.size()){
-        State& s = res[i];
+	int temp = min(size, int(bestNodes.size()));
+    REP(i,temp){
+        State s = state;
 		map_graph(s.envCheck, bestNodes[i].second.first, s.phi, s.gCheck, bestNodes[i].second.second);
-        s.score = bestNodes[i].first;
+		s.score = bestNodes[i].first;
+		res.push_back(s);
 	}
-	stateMemo[state] = res;
 	return std::move(res);
 }
 
-int DFS(const Graph& G, const Graph& envG, const State& state, int width, int depth){
-	if(depth == 0 or state.phi.size() == G.size()) return state.score;
-	vector<State> next = score(G, envG, state, width);
-	int ma = state.score;
-	REP(i,next.size()){
-		ma = max(DFS(G, envG, next[i], width, depth-1), ma);
-	}
-	return ma;
+bool TimeCheck(const chrono::system_clock::time_point start, const double limit){
+		const chrono::system_clock::time_point end = std::chrono::system_clock::now();  // 計測終了時間
+		double elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count(); //処理に要した時間をミリ秒に変換
+		if(elapsed > limit) return false;
+		return true;
 }
-
 
 int main(void) {
 	chrono::system_clock::time_point  start, end; // 型は auto で可
@@ -262,25 +260,22 @@ int main(void) {
 	if (envG.size() % 2 == 0) center_node -= sqrt(envG.size()) / 2;
 	map_graph(envCheck, center_node, phi, gCheck, bestFirst.second);
 
-    queue<State> que;
-	que.push(State(phi, envCheck, gCheck, 0));
-
-	vector<State> lasts;
-    while(not que.empty()) {
-		State state = que.front(); que.pop();
-		if(state.phi.size() == G.size()){
-			lasts.push_back(state);
-            continue;
+	vector<priority_queue<State> > qState(G.size());
+	qState[0].push(State(phi, envCheck, gCheck, 0));
+	int chokudaiWidth = 1;
+	while(TimeCheck(start, 9000)){
+		for(int t=0;t < G.size()-1;++t){
+			for(int i=0;i<chokudaiWidth;++i){
+				if(qState[t].empty()) break;
+				State nowState = qState[t].top(); qState[t].pop();
+				for(auto &nextState: score(G, envG, nowState, 20)){
+					qState[t+1].push(nextState);
+				}
+			}
+			if(not TimeCheck(start, 9500)) break;
 		}
-        vector<State> next = score(G, envG, state, 4);
-		vector<int> points(next.size());
-        REP(i,next.size()){
-			points[i] = DFS(G, envG, next[i], 3, 1);
-		}
-        int index = max_element(points.begin(), points.end()) - points.begin();
-        que.push(next[index]);
 	}
-	State res = *max_element(lasts.begin(), lasts.end());
+	State res = qState.back().top();
 	phi = std::move(res.phi);
 
 	priority_queue<pair<int, int> > nodePotential; // first: score, second: envNode
@@ -289,8 +284,8 @@ int main(void) {
 	double elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count(); //処理に要した時間をミリ秒に変換
 	//各ノードが増やせる可能性がある量を列挙
 	for(pair<int, int> nodeMap: phi){
-	end = std::chrono::system_clock::now();  // 計測終了時間
-	double elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count(); //処理に要した時間をミリ秒に変換
+		end = std::chrono::system_clock::now();  // 計測終了時間
+		double elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count(); //処理に要した時間をミリ秒に変換
 		if(elapsed > limit) break;
 		int envFrom = nodeMap.first;
 		int gFrom = phi[envFrom];
