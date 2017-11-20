@@ -10,6 +10,7 @@
 #include <queue>
 #include <map>
 #include <chrono>
+#include <cassert>
 
 
 #define FOR(i,a,b) for (int i=(a);i<(b);i++)
@@ -89,7 +90,7 @@ class Check {
 public:
 	vector<int> checkArray;
 	vector<bool> isChecked;
-	Check(int node) :checkArray(), isChecked(node) {
+	Check(int node) :checkArray(), isChecked(node, false) {
 		checkArray.reserve(node);
 	}
 	void check(int node) {
@@ -105,7 +106,7 @@ public:
 	}
 };
 bool operator < (const Check& left, const Check& right){
-    return left.isChecked < right.isChecked;
+	return left.isChecked < right.isChecked;
 }
 bool operator == (const Check& left, const Check& right){
 	return left.isChecked == right.isChecked;
@@ -122,9 +123,12 @@ struct CheckHash {
 
 
 void map_graph(Check& envCheck, int envNode, unordered_map<int, int>& phi, Check& gCheck, int gNode) {
+    int before = phi.size();
 	phi[envNode] = gNode;
 	envCheck.check(envNode);
 	gCheck.check(gNode);
+	int after = phi.size();
+    assert(before != after);
 }
 
 struct State{
@@ -143,24 +147,23 @@ struct StateHash {
 	};
 };
 bool operator < (const State& left, const State& right){
-    if(left.score != right.score) return left.score < right.score;
+	if(left.score != right.score) return left.score < right.score;
 	if(left.envCheck != right.envCheck) return left.envCheck < right.envCheck;
-    return left.gCheck < right.gCheck;
+	return left.gCheck < right.gCheck;
 }
 bool operator == (const State& left, const State& right){
 	return left.gCheck == right.gCheck and left.envCheck == right.envCheck;
 }
-unordered_map<State, vector<State>, StateHash> stateMemo;// state, size: value vector<State>
+map<State, vector<State>> stateMemo;// state, size: value vector<State>
 vector<State> score(const Graph& G, const Graph& envG, const State& state, int size){
-	if(stateMemo.find(state) != stateMemo.end()) {
+	if(stateMemo.count(state) == 1) {
 		return stateMemo[state];
 	}
 	const unordered_map<int, int>& phi = state.phi;
 	const Check& envCheck = state.envCheck;
 	const Check& gCheck = state.gCheck;
-    if(phi.size() == G.size()) return {};
-    vector<State> res(size, state);
-	unordered_map<int, vector<int>> envNodes;
+	if(phi.size() == G.size()) return {};
+	unordered_map<int, vector<int>> envNodes; // to側からfromを登録する
 	for (auto &n : envCheck.get_checked_nodes()) for (auto &t : envG.get_to(n)) if (not envCheck.get_is_checked(t)) {
 				envNodes[t].push_back(n);
 			}
@@ -200,10 +203,12 @@ vector<State> score(const Graph& G, const Graph& envG, const State& state, int s
 	sort(bestNodes.begin(), bestNodes.end());
 	reverse(bestNodes.begin(), bestNodes.end());
 	//map graph
-    REP(i,res.size()){
-        State& s = res[i];
+	int temp = min(size, int(bestNodes.size()));
+	vector<State> res(temp, state);
+	REP(i,temp){
+		State& s = res[i];
 		map_graph(s.envCheck, bestNodes[i].second.first, s.phi, s.gCheck, bestNodes[i].second.second);
-        s.score = bestNodes[i].first;
+		s.score = bestNodes[i].first;
 	}
 	stateMemo[state] = res;
 	return std::move(res);
@@ -252,9 +257,9 @@ int main(void) {
 		int score = G.get_edge_sum(from);
 		if (bestFirst.first < score) {
 			bestFirst.first = score;
-		end = std::chrono::system_clock::now();  // 計測終了時間
-		double elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count(); //処理に要した時間をミリ秒に変換
-		if(elapsed > limit) break;
+			end = std::chrono::system_clock::now();  // 計測終了時間
+			double elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count(); //処理に要した時間をミリ秒に変換
+			if(elapsed > limit) break;
 			bestFirst.second = from;
 		}
 	}
@@ -262,23 +267,47 @@ int main(void) {
 	if (envG.size() % 2 == 0) center_node -= sqrt(envG.size()) / 2;
 	map_graph(envCheck, center_node, phi, gCheck, bestFirst.second);
 
-    queue<State> que;
+	queue<State> que;
 	que.push(State(phi, envCheck, gCheck, 0));
 
 	vector<State> lasts;
-    while(not que.empty()) {
+	int width = 2;
+	int nextWidth = 2;
+	int cnt = 0;
+	while(not que.empty()) {
+        ++cnt;
+		//cerr << "cnt:" << cnt << endl;
 		State state = que.front(); que.pop();
 		if(state.phi.size() == G.size()){
 			lasts.push_back(state);
-            continue;
+			continue;
 		}
-        vector<State> next = score(G, envG, state, 4);
+		vector<State> next = score(G, envG, state, width);
+		long scoreElapsed = 0;
 		vector<int> points(next.size());
-        REP(i,next.size()){
-			points[i] = DFS(G, envG, next[i], 3, 1);
+		REP(i,next.size()){
+			auto scoreStart = std::chrono::system_clock::now();  // 計測終了時間
+			points[i] = DFS(G, envG, next[i], nextWidth, 1);
+			auto scoreEnd = std::chrono::system_clock::now();  // 計測終了時
+            scoreElapsed = max(scoreElapsed, static_cast<long>(chrono::duration_cast<std::chrono::microseconds>(scoreEnd-scoreStart).count())); //処理に要した時間をミリ秒に変換
 		}
-        int index = max_element(points.begin(), points.end()) - points.begin();
-        que.push(next[index]);
+		int index = max_element(points.begin(), points.end()) - points.begin();
+		//cerr << "phi cnt:" << state.phi.size() << " " << next[index].phi.size() << endl;
+		que.push(next[index]);
+        if(scoreElapsed < 100){
+			width = G.size();
+			nextWidth = G.size();
+		}
+		auto end = std::chrono::system_clock::now();  // 計測終了時間
+		double restTime = 9500000 - std::chrono::duration_cast<std::chrono::microseconds>(end-start).count(); //処理に要した時間をミリ秒に変換
+		double restCount = restTime/(scoreElapsed);
+		//cerr << "scoreElapsed:" << scoreElapsed << endl;
+		//cerr << "restTime:" << restTime << endl;
+		//cerr << "restCount:" << restCount << endl;
+        width = min(int(sqrt(restCount/(G.size() - cnt))), G.size()-1);
+        nextWidth = width;
+		//cerr << "width:" << width << endl;
+		//cerr << "nextWidth:" << nextWidth << endl;
 	}
 	State res = *max_element(lasts.begin(), lasts.end());
 	phi = std::move(res.phi);
@@ -289,8 +318,8 @@ int main(void) {
 	double elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count(); //処理に要した時間をミリ秒に変換
 	//各ノードが増やせる可能性がある量を列挙
 	for(pair<int, int> nodeMap: phi){
-	end = std::chrono::system_clock::now();  // 計測終了時間
-	double elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count(); //処理に要した時間をミリ秒に変換
+		auto end = std::chrono::system_clock::now();  // 計測終了時間
+		double elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count(); //処理に要した時間をミリ秒に変換
 		if(elapsed > limit) break;
 		int envFrom = nodeMap.first;
 		int gFrom = phi[envFrom];
@@ -349,7 +378,7 @@ int main(void) {
 			else {
 				swap(phi[curNode], phi[maxScore.second]);
 			}
- 
+
 			int envFrom = curNode;
 			if(phi.count(envFrom)){
 				int gFrom = phi[envFrom];
@@ -363,7 +392,7 @@ int main(void) {
 				}
 				nodePotential.push({score, envFrom});
 			}
- 
+
 			envFrom = maxScore.second;
 			if(phi.count(envFrom)){
 				int gFrom = phi[envFrom];
@@ -379,7 +408,7 @@ int main(void) {
 			}
 		}
 	}
-	
+
 
 	for (auto &a : phi) {
 		cout << a.second + 1 << " " << a.first + 1 << endl;
