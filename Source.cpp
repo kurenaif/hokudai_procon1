@@ -7,6 +7,8 @@
 #include <queue>
 #include <unordered_set>
 #include <climits>
+#include <chrono>
+#include <random>
  
  
 #define FOR(i,a,b) for (int i=(a);i<(b);i++)
@@ -122,6 +124,8 @@ void map_graph(Check& envCheck, int envNode, unordered_map<int, int>& phi, Check
 }
  
 int main(void) {
+	chrono::system_clock::time_point  start, end; // 型は auto で可
+	start = std::chrono::system_clock::now(); // 計測開始時間
 	// input
 	int V, E; cin >> V >> E;
 	Graph G(V); //0-indexed node
@@ -192,6 +196,97 @@ int main(void) {
 		}
 		);
 		map_graph(envCheck, best.first, phi, gCheck, best.second.first);
+	}
+
+	priority_queue<pair<int, int> > nodePotential; // first: score, second: envNode
+	vector<int> scoreMemo(envG.size()); // scoreMemo[to] = score;
+
+	//各ノードが増やせる可能性がある量を列挙
+	for(pair<int, int> nodeMap: phi){
+		int envFrom = nodeMap.first;
+		int gFrom = phi[envFrom];
+		int score = G.get_edge_sum(gFrom);
+		for(const int& envTo: envG.get_to(envFrom)){
+			if(phi.count(envTo) != 0){
+				int gTo = phi[envTo];
+				score -= G.get_cost(gFrom, gTo);
+				scoreMemo[envFrom] += G.get_cost(gFrom, gTo);
+			}
+		}
+		nodePotential.push({score, envFrom});
+	}
+
+	double limit = 9500;
+	while(true){
+		end = std::chrono::system_clock::now();  // 計測終了時間
+		double elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count(); //処理に要した時間をミリ秒に変換
+		if(elapsed > limit) break;
+		pair<int, int> potential = nodePotential.top(); nodePotential.pop(); //first: score, second: envNode
+		int scoreDiff = 0;
+		int curNode = potential.second;
+		int curPenalty = scoreMemo[curNode]; // cur側を取り除いた時に発生する負債
+		pair<int, int> maxScore; //first: score, second: tar
+		REP(tarNode,envG.size()){
+			int tarPenalty = scoreMemo[tarNode]; // tar側を取り除いた時に発生する負債
+			int score = 0;
+			for(int to:envG.get_to(tarNode)){ //入れ替えた先がtar側の計算
+				if(phi.count(curNode) and phi.count(to)) score += G.get_cost(phi[curNode], phi[to]);
+			}
+			for(int to:envG.get_to(curNode)){ //入れ替えた先がfrom側の計算
+				if(phi.count(tarNode) and phi.count(to)) score += G.get_cost(phi[tarNode], phi[to]);
+			}
+			score -= curPenalty;
+			score -= tarPenalty;
+			if(maxScore.first < score){
+				maxScore.first = score;
+				maxScore.second = tarNode;
+			}
+		}
+		end = std::chrono::system_clock::now();  // 計測終了時間
+		elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count(); //処理に要した時間をミリ秒に変換
+		if(elapsed > limit) break;
+		//ToDo swapした結果をpriority_queueにpushする
+		if(maxScore.first > 0){
+			if(not phi.count(curNode)){
+				phi[curNode] = phi[maxScore.second];
+				phi.erase(maxScore.second);
+			}
+			else if(not phi.count(maxScore.second)){
+				phi[maxScore.second] = phi[curNode];
+				phi.erase(curNode);
+			}
+			else {
+				swap(phi[curNode], phi[maxScore.second]);
+			}
+
+			int envFrom = curNode;
+			if(phi.count(envFrom)){
+				int gFrom = phi[envFrom];
+				int score = G.get_edge_sum(gFrom);
+				for(const int& envTo: envG.get_to(envFrom)){
+					if(phi.count(envTo) != 0){
+						int gTo = phi[envTo];
+						score -= G.get_cost(gFrom, gTo);
+						scoreMemo[envFrom] += G.get_cost(gFrom, gTo);
+					}
+				}
+				nodePotential.push({score, envFrom});
+			}
+
+			envFrom = maxScore.second;
+			if(phi.count(envFrom)){
+				int gFrom = phi[envFrom];
+				int score = G.get_edge_sum(gFrom);
+				for(const int& envTo: envG.get_to(envFrom)){
+					if(phi.count(envTo) != 0){
+						int gTo = phi[envTo];
+						score -= G.get_cost(gFrom, gTo);
+						scoreMemo[envFrom] += G.get_cost(gFrom, gTo);
+					}
+				}
+				nodePotential.push({score, envFrom});
+			}
+		}
 	}
 
 	for (auto &a : phi) {
